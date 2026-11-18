@@ -8,6 +8,9 @@ $userProfile = $UserProfile
 $src = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dst = 'C:\ProgramData\CookieGuard'
 
+# Close any CookieGuard popups still open from an earlier version
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'CookieGuard\\alert\.ps1' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 # 0. Copy the scripts somewhere only admins can change (so malware running as you can't rewrite them)
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 Copy-Item "$src\alert.ps1", "$src\apply-sacl.ps1", "$src\uninstall.ps1" -Destination $dst -Force
@@ -45,7 +48,8 @@ $browsers = @(
     'C:\Program Files\Mozilla Firefox\firefox.exe'
 ) | Where-Object { Test-Path -LiteralPath $_ }
 $notBrowser = ($browsers | ForEach-Object { "Data[@Name='ProcessName']!='$_'" }) -join ' and '
-$xpath = "*[System[EventID=4663]] and *[EventData[$notBrowser]]"
+# Only programs running as this user (stealers do); Windows Update and services run as SYSTEM/service accounts.
+$xpath = "*[System[EventID=4663]] and *[EventData[Data[@Name='SubjectUserSid']='$userSid' and $notBrowser]]"
 $query = "<QueryList><Query Id=`"0`" Path=`"Security`"><Select Path=`"Security`">$xpath</Select></Query></QueryList>"
 $queryEsc = [System.Security.SecurityElement]::Escape($query)
 $argsEsc  = [System.Security.SecurityElement]::Escape("--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$dst\alert.ps1`" -Proc `"`$(Proc)`" -ProcId `"`$(ProcId)`" -Obj `"`$(Obj)`"")

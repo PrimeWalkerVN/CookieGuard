@@ -21,7 +21,7 @@ The following programs are trusted and never raise an alert. Each one counts onl
 ## How it works
 
 1. **Turns on file-access auditing.** Install switches on the Windows audit category "File System", then adds an audit rule to the files above, and to the folders that hold `Local State` and `logins.json`, so Windows logs a Security event (4663) whenever they're opened.
-2. **Fires on reads by anything other than a browser.** The scheduled task **CookieGuard Alert** runs whenever that event comes from a program other than a real browser, and starts `alert.ps1` with the program's path, its process ID and the file it opened.
+2. **Fires on reads by anything other than a browser.** The scheduled task **CookieGuard Alert** runs whenever that event comes from a program other than a real browser running under your account (Windows Update and other system services run under other accounts, so they're ignored), and starts `alert.ps1` with the program's path, its process ID and the file it opened.
 3. **Shows the popup.** `alert.ps1` checks the trust list. For anything not on it, it logs the event and shows a warning that asks **Stop this program now?**, with **Yes** and **No** buttons. If one program opens several files, you get one popup per 2 minutes, not one per file.
 4. **Keeps the audit rules in place.** The scheduled task **CookieGuard Refresh** runs under Windows' built-in SYSTEM account at startup, at logon and every 30 minutes, and re-applies the audit rules in case a browser replaced a file.
 

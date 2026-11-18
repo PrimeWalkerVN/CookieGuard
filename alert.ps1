@@ -2,10 +2,20 @@
 # Windows passes in the program path, its process ID (hex) and the file it opened.
 param([string]$Proc, [string]$ProcId, [string]$Obj)
 
+# Only the browser files CookieGuard watches. Turning on file-system auditing also activates audit rules Windows itself
+# puts on some system files (e.g. Windows Update packages); those are not our business.
+$watched = '\\AppData\\.+\\(Local State|Network\\Cookies|Login Data|Web Data|cookies\.sqlite|logins\.json|key4\.db)$'
+if ($Obj -notmatch $watched) { exit 0 }
+
 $logDir = Join-Path $env:LOCALAPPDATA 'CookieGuard'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir 'alerts.log'
-function Log($text) { Add-Content -LiteralPath $log -Value ("[{0}] {1}" -f (Get-Date -Format 's'), $text) }
+function Log($text) {
+    $line = "[{0}] {1}" -f (Get-Date -Format 's'), $text
+    for ($i = 0; $i -lt 20; $i++) {   # several alerts can fire at once: retry instead of failing on a locked file
+        try { [IO.File]::AppendAllText($log, $line + [Environment]::NewLine); return } catch { Start-Sleep -Milliseconds 100 }
+    }
+}
 
 $pidNum = 0
 try { $pidNum = [Convert]::ToInt32(($ProcId -replace '^0x', ''), 16) } catch { }
@@ -41,6 +51,10 @@ Log "ALERT    pid=$pidNum sig=[$sigText] $Proc -> $Obj"
 $mark = Join-Path $logDir "seen-$pidNum.txt"
 if ((Test-Path $mark) -and ((Get-Item $mark).LastWriteTime -gt (Get-Date).AddMinutes(-2))) { exit 0 }
 Set-Content -LiteralPath $mark -Value $Proc
+
+# One popup on screen at a time; anything else that fires meanwhile is logged only.
+$popup = New-Object System.Threading.Mutex($false, 'Global\CookieGuardPopup')
+if (-not $popup.WaitOne(0)) { Log "logged only (another CookieGuard popup is open) pid=$pidNum"; exit 0 }
 
 Add-Type -AssemblyName System.Windows.Forms
 $msg = @"
